@@ -62,6 +62,10 @@ static int BNCDebugTriggerDuration = 3;
 static int BNCDebugTriggerFingers = 4;
 static int BNCDebugTriggerFingersSimulator = 2;
 
+#ifndef NSUserActivityTypeBrowsingWeb
+#define NSUserActivityTypeBrowsingWeb @"NSUserActivityTypeBrowsingWeb"
+#endif
+
 @interface Branch() <UIGestureRecognizerDelegate, BranchDeepLinkingControllerCompletionDelegate>
 
 @property (strong, nonatomic) BNCServerInterface *bServerInterface;
@@ -383,7 +387,7 @@ static int BNCDebugTriggerFingersSimulator = 2;
 }
 
 - (BOOL)continueUserActivity:(NSUserActivity *)userActivity {
-    if ([BNCSystemObserver getOSVersion].integerValue >= 8 && [userActivity.activityType isEqualToString:NSUserActivityTypeBrowsingWeb]) {
+    if ([userActivity.activityType isEqualToString:NSUserActivityTypeBrowsingWeb]) {
         self.preferenceHelper.universalLinkUrl = [userActivity.webpageURL absoluteString];
         
         [self initUserSessionAndCallCallback:YES];
