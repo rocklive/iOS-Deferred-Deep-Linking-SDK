@@ -383,7 +383,7 @@ static int BNCDebugTriggerFingersSimulator = 2;
 }
 
 - (BOOL)continueUserActivity:(NSUserActivity *)userActivity {
-    if ([userActivity.activityType isEqualToString:NSUserActivityTypeBrowsingWeb]) {
+    if ([BNCSystemObserver getOSVersion].integerValue >= 8 && [userActivity.activityType isEqualToString:NSUserActivityTypeBrowsingWeb]) {
         self.preferenceHelper.universalLinkUrl = [userActivity.webpageURL absoluteString];
         
         [self initUserSessionAndCallCallback:YES];
