@@ -11,12 +11,19 @@
 
 @interface UniversalObjectViewController ()
 @property (nonatomic, strong) BranchUniversalObject *myContent;
+@property NSArray* adjs;
+@property NSArray* nouns;
+
 @end
 
 @implementation UniversalObjectViewController
 
 - (void)viewDidLoad {
     [super viewDidLoad];
+    self.adjs = @[@"Blue", @"Narrow", @"Cold", @"Little", @"Slow", @"Big", @"Tall", @"Blue", @"Green", @"Loud"];
+    
+    self.nouns = @[@"Fish", @"Rock", @"River", @"Bird", @"Hill", @"Oak", @"Canyon", @"Lake", @"Trail", @"Cat"];
+    
     
     self.expires.selectedSegmentIndex = 0;
     
@@ -47,10 +54,18 @@
 }
 
 - (IBAction)cmdInitUniversalObject {
-    if (!self.canonicalIdentifierTextField.text.length && !self.titleTextField.text.length) {
-        self.canonicalIdentifierTextField.text = @"id12345";
+    //make a random ID
+    NSString* identStr = [NSString stringWithFormat:@"ID%d", arc4random_uniform(999999)];
+    NSString* titleStr = [NSString stringWithFormat:@"%@%@", self.adjs[arc4random_uniform(9)], self.nouns[arc4random_uniform(9)]];
+    
+    if (!self.canonicalIdentifierTextField.text.length ) {
+        self.canonicalIdentifierTextField.text = identStr;
     }
     
+    if (!self.titleTextField.text.length) {
+        self.titleTextField.text = titleStr;
+    }
+
     self.myContent = [[BranchUniversalObject alloc] initWithCanonicalIdentifier:self.canonicalIdentifierTextField.text];
     self.myContent.title = self.titleTextField.text;
     self.myContent.contentDescription = @"My awesome piece of content!";
@@ -81,7 +96,7 @@
 
 - (void)ensureUniversalObjectIsInitialized {
     if (!self.myContent) {
-        NSLog(@"Please `init universal object` first");
+        NSLog(@"Create Universal Object First");
     }
 }
 
@@ -107,24 +122,24 @@
     return props;
 }
 
-- (IBAction)cmdGetShortUrl {
-    [self ensureUniversalObjectIsInitialized];
-    [self.myContent getShortUrlWithLinkProperties:[self exampleLinkProperties] andCallback:^(NSString *url, NSError *error) {
-        if (!error) {
-            NSLog(@"success getting url! %@", url);
-            self.shortUrlTextField.text = url;
-        }
-        else {
-            NSLog(@"error getting url: %@", error);
-        }
-    }];
-    
-    /**
-     Synchronous call (not recommended):
-     
-     [self.myContent getShortUrlWithLinkProperties:[self exampleLinkProperties]];
-     */
-}
+//- (IBAction)cmdGetShortUrl {
+//    [self ensureUniversalObjectIsInitialized];
+//    [self.myContent getShortUrlWithLinkProperties:[self exampleLinkProperties] andCallback:^(NSString *url, NSError *error) {
+//        if (!error) {
+//            NSLog(@"success getting url! %@", url);
+//            self.shortUrlTextField.text = url;
+//        }
+//        else {
+//            NSLog(@"error getting url: %@", error);
+//        }
+//    }];
+//    
+//    /**
+//     Synchronous call (not recommended):
+//     
+//     [self.myContent getShortUrlWithLinkProperties:[self exampleLinkProperties]];
+//     */
+//}
 
 - (IBAction)cmdListOnSpotlight {
     [self ensureUniversalObjectIsInitialized];
@@ -144,55 +159,55 @@
      */
 }
 
-- (IBAction)cmdShowShareSheet {
-    [self ensureUniversalObjectIsInitialized];
-    [self.myContent showShareSheetWithLinkProperties:[self exampleLinkProperties] andShareText:@"Super amazing thing I want to share!" fromViewController:self andCallback:^{
-        NSLog(@"finished presenting");
-    }];
-    
-    /**
-     Simple alternative:
-     
-     [self.myContent showShareSheetWithShareText:@"Super amazing thing I want to share!" andCallback:nil];
-     */
-}
-
-// This is the old share sheet method.
-- (IBAction)cmdOldShareSheet {
-    // Setup up the content you want to share, and the Branch
-    // params and properties, as you would for any branch link
-    
-    // No need to set the channel, that is done automatically based
-    // on the share activity the user selects
-    NSString *shareString = @"Super amazing thing I want to share!";
-    
-    NSDictionary *params = [[NSDictionary alloc] initWithObjects:@[@"test_object", @"here is another object!!", @"Kindred", @"https://s3-us-west-1.amazonaws.com/branchhost/mosaic_og.png"] forKeys:@[@"key1", @"key2", @"$og_title", @"$og_image_url"]];
-    
-    NSArray *tags = @[@"tag1", @"tag2"];
-    
-    NSString *feature = @"invite";
-    
-    NSString *stage = @"2";
-    
-    // Branch UIActivityItemProvider
-    UIActivityItemProvider *itemProvider = [Branch getBranchActivityItemWithParams:params feature:feature stage:stage tags:tags];
-    
-    /**
-     If you really love the itemProvider, here's a way to get one derived from a BranchUniversalObject:
-     
-     UIActivityItemProvider *itemProvider = [self.myContent getBranchActivityItemWithLinkProperties:[self exampleLinkProperties]];
-     */
-    
-    // Pass this in the NSArray of ActivityItems when initializing a UIActivityViewController
-    UIActivityViewController *shareViewController = [[UIActivityViewController alloc] initWithActivityItems:@[shareString, itemProvider] applicationActivities:nil];
-    
-    // Required for iPad/Universal apps on iOS 8+
-    if ([shareViewController respondsToSelector:@selector(popoverPresentationController)]) {
-        shareViewController.popoverPresentationController.sourceView = self.view;
-    }
-    
-    // Present the share sheet!
-    [self.navigationController presentViewController:shareViewController animated:YES completion:nil];
-}
+//- (IBAction)cmdShowShareSheet {
+//    [self ensureUniversalObjectIsInitialized];
+//    [self.myContent showShareSheetWithLinkProperties:[self exampleLinkProperties] andShareText:@"Super amazing thing I want to share!" fromViewController:self andCallback:^{
+//        NSLog(@"finished presenting");
+//    }];
+//    
+//    /**
+//     Simple alternative:
+//     
+//     [self.myContent showShareSheetWithShareText:@"Super amazing thing I want to share!" andCallback:nil];
+//     */
+//}
+//
+//// This is the old share sheet method.
+//- (IBAction)cmdOldShareSheet {
+//    // Setup up the content you want to share, and the Branch
+//    // params and properties, as you would for any branch link
+//    
+//    // No need to set the channel, that is done automatically based
+//    // on the share activity the user selects
+//    NSString *shareString = @"Super amazing thing I want to share!";
+//    
+//    NSDictionary *params = [[NSDictionary alloc] initWithObjects:@[@"test_object", @"here is another object!!", @"Kindred", @"https://s3-us-west-1.amazonaws.com/branchhost/mosaic_og.png"] forKeys:@[@"key1", @"key2", @"$og_title", @"$og_image_url"]];
+//    
+//    NSArray *tags = @[@"tag1", @"tag2"];
+//    
+//    NSString *feature = @"invite";
+//    
+//    NSString *stage = @"2";
+//    
+//    // Branch UIActivityItemProvider
+//    UIActivityItemProvider *itemProvider = [Branch getBranchActivityItemWithParams:params feature:feature stage:stage tags:tags];
+//    
+//    /**
+//     If you really love the itemProvider, here's a way to get one derived from a BranchUniversalObject:
+//     
+//     UIActivityItemProvider *itemProvider = [self.myContent getBranchActivityItemWithLinkProperties:[self exampleLinkProperties]];
+//     */
+//    
+//    // Pass this in the NSArray of ActivityItems when initializing a UIActivityViewController
+//    UIActivityViewController *shareViewController = [[UIActivityViewController alloc] initWithActivityItems:@[shareString, itemProvider] applicationActivities:nil];
+//    
+//    // Required for iPad/Universal apps on iOS 8+
+//    if ([shareViewController respondsToSelector:@selector(popoverPresentationController)]) {
+//        shareViewController.popoverPresentationController.sourceView = self.view;
+//    }
+//    
+//    // Present the share sheet!
+//    [self.navigationController presentViewController:shareViewController animated:YES completion:nil];
+//}
 
 @end
