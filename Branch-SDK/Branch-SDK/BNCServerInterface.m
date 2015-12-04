@@ -10,6 +10,24 @@
 #import "BNCConfig.h"
 #import "BNCEncodingUtils.h"
 #import "BNCError.h"
+#import <UIKit/UIKit.h>
+
+BOOL BNCIsRunningAtLeastOSVersion(CGFloat version) {
+    static NSInteger majorVersion;
+    static NSInteger minorVersion;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        NSString *version = [[UIDevice currentDevice] systemVersion];
+        NSArray *components = [version componentsSeparatedByString:@"."];
+        majorVersion = [components[0] integerValue];
+        minorVersion = 0;
+        if (components.count > 1) {
+            minorVersion = [components[1] integerValue];
+        }
+    });
+    return version <= ((majorVersion + (minorVersion / 10.)) + 0.001 /* just to make sure no weird double rounding errors happen */);
+}
+
 
 @implementation BNCServerInterface
 
@@ -74,59 +92,120 @@
 }
 
 - (void)genericHTTPRequest:(NSURLRequest *)request retryNumber:(NSInteger)retryNumber log:(BOOL)log callback:(BNCServerCallback)callback retryHandler:(NSURLRequest *(^)(NSInteger))retryHandler {
-#if defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && __IPHONE_OS_VERSION_MAX_ALLOWED >= 90000
+    if (BNCIsRunningAtLeastOSVersion(8)) {
+        [self NSURLSession_genericHTTPRequest:request
+                                  retryNumber:retryNumber
+                                          log:log
+                                     callback:callback
+                                 retryHandler:retryHandler];
+    } else {
+        [self NSURLConnection_genericHTTPRequest:request
+                                     retryNumber:retryNumber
+                                             log:log
+                                        callback:callback
+                                    retryHandler:retryHandler];
+    }
+}
+
+- (void)NSURLConnection_genericHTTPRequest:(NSURLRequest *)request
+                               retryNumber:(NSInteger)retryNumber
+                                       log:(BOOL)log
+                                  callback:(BNCServerCallback)callback
+                              retryHandler:(NSURLRequest *(^)(NSInteger))retryHandler {
+    [NSURLConnection sendAsynchronousRequest:request
+                                       queue:[NSOperationQueue mainQueue]
+                           completionHandler:
+     ^(NSURLResponse *response, NSData *responseData, NSError *error)
+     {
+         [self processHTTPResponseData:responseData
+                           forResponse:response
+                             withError:error
+                            forRequest:request
+                           retryNumber:retryNumber
+                                   log:log
+                              callback:callback
+                          retryHandler:retryHandler
+                       isAsyncCallback:NO];
+     }];
+}
+
+- (void)NSURLSession_genericHTTPRequest:(NSURLRequest *)request
+                            retryNumber:(NSInteger)retryNumber
+                                    log:(BOOL)log callback:(BNCServerCallback)callback
+                           retryHandler:(NSURLRequest *(^)(NSInteger))retryHandler {
     NSURLSession *session = [NSURLSession sessionWithConfiguration:[NSURLSessionConfiguration defaultSessionConfiguration]];
-    NSURLSessionDataTask *task = [session dataTaskWithRequest:request.copy completionHandler:^(NSData * _Nullable responseData, NSURLResponse * _Nullable response, NSError * _Nullable error) {
-#else
-    [NSURLConnection sendAsynchronousRequest:request queue:[NSOperationQueue mainQueue] completionHandler:^(NSURLResponse *response, NSData *responseData, NSError *error) {
-#endif
-        BNCServerResponse *serverResponse = [self processServerResponse:response data:responseData error:error log:log];
-        NSInteger status = [serverResponse.statusCode integerValue];
-        BOOL isRetryableStatusCode = status >= 500;
-        
-        // Retry the request if appropriate
-        if (retryNumber < self.preferenceHelper.retryCount && isRetryableStatusCode) {
-            dispatch_time_t dispatchTime = dispatch_time(DISPATCH_TIME_NOW, self.preferenceHelper.retryInterval * NSEC_PER_SEC);
-            dispatch_after(dispatchTime, dispatch_get_main_queue(), ^{
-                if (log) {
-                    [self.preferenceHelper log:FILE_NAME line:LINE_NUM message:@"Replaying request with url %@", request.URL.relativePath];
-                }
-                
-                // Create the next request
-                NSURLRequest *retryRequest = retryHandler(retryNumber);
-                [self genericHTTPRequest:retryRequest retryNumber:(retryNumber + 1) log:log callback:callback retryHandler:retryHandler];
-            });
-        }
-        else if (callback) {
-            // Wrap up bad statuses w/ specific error messages
-            if (status >= 500) {
-                error = [NSError errorWithDomain:BNCErrorDomain code:BNCServerProblemError userInfo:@{ NSLocalizedDescriptionKey: @"Trouble reaching the Branch servers, please try again shortly" }];
-            }
-            else if (status == 409) {
-                error = [NSError errorWithDomain:BNCErrorDomain code:BNCDuplicateResourceError userInfo:@{ NSLocalizedDescriptionKey: @"A resource with this identifier already exists" }];
-            }
-            else if (status >= 400) {
-                NSString *errorString = [serverResponse.data objectForKey:@"error"] ?: @"The request was invalid.";
-                
-                error = [NSError errorWithDomain:BNCErrorDomain code:BNCBadRequestError userInfo:@{ NSLocalizedDescriptionKey: errorString }];
+    NSURLSessionDataTask *task = [session dataTaskWithRequest:request.copy
+                                            completionHandler:
+    ^(NSData * _Nullable responseData, NSURLResponse * _Nullable response, NSError * _Nullable error)
+    {
+        [self processHTTPResponseData:responseData
+                          forResponse:response
+                            withError:error
+                           forRequest:request
+                          retryNumber:retryNumber
+                                  log:log
+                             callback:callback
+                         retryHandler:retryHandler
+                      isAsyncCallback:YES];
+    }];
+    
+    [task resume];
+    [session finishTasksAndInvalidate];
+}
+
+- (void)processHTTPResponseData:(NSData * _Nullable)responseData
+                    forResponse:(NSURLResponse * _Nullable)response
+                      withError:(NSError * _Nullable)error
+                     forRequest:(NSURLRequest *)request
+                    retryNumber:(NSInteger)retryNumber
+                            log:(BOOL)log
+                       callback:(BNCServerCallback)callback
+                   retryHandler:(NSURLRequest *(^)(NSInteger))retryHandler
+                isAsyncCallback:(BOOL)isAsyncCalback
+{
+    BNCServerResponse *serverResponse = [self processServerResponse:response data:responseData error:error log:log];
+    NSInteger status = [serverResponse.statusCode integerValue];
+    BOOL isRetryableStatusCode = status >= 500;
+    
+    // Retry the request if appropriate
+    if (retryNumber < self.preferenceHelper.retryCount && isRetryableStatusCode) {
+        dispatch_time_t dispatchTime = dispatch_time(DISPATCH_TIME_NOW, self.preferenceHelper.retryInterval * NSEC_PER_SEC);
+        dispatch_after(dispatchTime, dispatch_get_main_queue(), ^{
+            if (log) {
+                [self.preferenceHelper log:FILE_NAME line:LINE_NUM message:@"Replaying request with url %@", request.URL.relativePath];
             }
             
-            if (error && log) {
-                [self.preferenceHelper log:FILE_NAME line:LINE_NUM message:@"An error prevented request to %@ from completing: %@", request.URL.absoluteString, error.localizedDescription];
-            }
-#if defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && __IPHONE_OS_VERSION_MAX_ALLOWED >= 90000
+            // Create the next request
+            NSURLRequest *retryRequest = retryHandler(retryNumber);
+            [self genericHTTPRequest:retryRequest retryNumber:(retryNumber + 1) log:log callback:callback retryHandler:retryHandler];
+        });
+    }
+    else if (callback) {
+        // Wrap up bad statuses w/ specific error messages
+        if (status >= 500) {
+            error = [NSError errorWithDomain:BNCErrorDomain code:BNCServerProblemError userInfo:@{ NSLocalizedDescriptionKey: @"Trouble reaching the Branch servers, please try again shortly" }];
+        }
+        else if (status == 409) {
+            error = [NSError errorWithDomain:BNCErrorDomain code:BNCDuplicateResourceError userInfo:@{ NSLocalizedDescriptionKey: @"A resource with this identifier already exists" }];
+        }
+        else if (status >= 400) {
+            NSString *errorString = [serverResponse.data objectForKey:@"error"] ?: @"The request was invalid.";
+            
+            error = [NSError errorWithDomain:BNCErrorDomain code:BNCBadRequestError userInfo:@{ NSLocalizedDescriptionKey: errorString }];
+        }
+        
+        if (error && log) {
+            [self.preferenceHelper log:FILE_NAME line:LINE_NUM message:@"An error prevented request to %@ from completing: %@", request.URL.absoluteString, error.localizedDescription];
+        }
+        
+        if (isAsyncCalback) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 callback(serverResponse, error);
             });
-        }
-    }];
-    [task resume];
-    [session finishTasksAndInvalidate];
-#else
+        } else {
             callback(serverResponse, error);
         }
-    }];
-#endif
+    }
 }
 
 - (BNCServerResponse *)genericHTTPRequest:(NSURLRequest *)request log:(BOOL)log {
